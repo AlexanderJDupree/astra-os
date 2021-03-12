@@ -8,7 +8,7 @@
 
 
 use core::panic::PanicInfo;
-use ansi_rgb::{ Foreground, red, green };
+use ansi_rgb::{Foreground, red, green};
 use astra_os::{QemuExitCode, exit_qemu, serial_println, serial_print};
 
 
