@@ -3,18 +3,24 @@
 
 #![no_std]
 #![cfg_attr(test, no_main)]
+#![feature(abi_x86_interrupt)]
 #![feature(custom_test_frameworks)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 
 pub mod serial;
+pub mod interrupts;
 pub mod vga_buffer;
 
 
 use core::panic:: PanicInfo;
 use ansi_rgb::{ Foreground, red, green };
 
+
+//////////////////////////////
+// Data Structures and Types
+//////////////////////////////
 
 // Qemu translates IO exit codes with (x << 1) | 1. Can't use 0 or 1 since those
 // are default exit codes for Qemu. 
@@ -38,6 +44,31 @@ where T:Fn(),
         self();
         serial_println!("{}", "[ ok ]".fg(green()));
     }
+}
+
+
+//////////////////////////////
+// API
+//////////////////////////////
+
+pub fn init() {
+    interrupts::init_idt();
+}
+
+
+#[cfg(test)] // Cargo xtest entry point
+#[no_mangle]
+pub extern "C" fn _start() -> ! {
+    init();
+    test_main();
+    loop{}
+}
+
+
+#[cfg(test)]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    test_panic_handler(info);
 }
 
 
@@ -68,17 +99,3 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     loop {} // Still needed for the compiler
 }
 
-
-#[cfg(test)] // Cargo xtest entry point
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
-    test_main();
-    loop{}
-}
-
-
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    test_panic_handler(info);
-}

@@ -16,9 +16,12 @@ use core::panic::PanicInfo;
 pub extern "C" fn _start() -> ! {
     println!("Hello {}", "astra-os");
 
+    astra_os::init();
+
     #[cfg(test)]
     test_main();
 
+    println!("Phew, I didn't crash. . .");
     loop {}
 }
 

@@ -6,6 +6,9 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
 
+//////////////////////////////
+// Statics/Constants
+//////////////////////////////
 
 lazy_static! {
     pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
@@ -16,6 +19,17 @@ lazy_static! {
     });
 }
 
+// The height of the text buffer (normally 25 lines).
+const BUFFER_HEIGHT: usize = 25;
+// The width of the text buffer (normally 80 columns).
+const BUFFER_WIDTH: usize = 80;
+// Printed when a character code is invalid
+const UNRECOGNIZED_CHAR: u8 = 0xfe;
+
+
+////////////////////////////////
+// Structs, Types, Traits, Impl
+////////////////////////////////
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +57,6 @@ pub enum Color { // Standard VGA Color Palette
 #[repr(transparent)]
 struct ColorCode(u8);
 
-
 impl ColorCode {
     fn new(foreground: Color, background: Color) -> ColorCode {
         ColorCode((background as u8) << 4 | (foreground as u8))
@@ -60,19 +73,10 @@ struct ScreenChar {
 }
 
 
-// The height of the text buffer (normally 25 lines).
-const BUFFER_HEIGHT: usize = 25;
-// The width of the text buffer (normally 80 columns).
-const BUFFER_WIDTH: usize = 80;
-
-
 struct Buffer { // Represents VGA Text buffer
     chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
-
-// Printed when a character code is invalid
-const UNRECOGNIZED_CHAR: u8 = 0xfe;
 
 pub struct Writer {
     column_pos: usize,
@@ -148,6 +152,10 @@ impl fmt::Write for Writer {
 }
 
 
+////////////////////////////////
+// Macros
+////////////////////////////////
+
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
@@ -167,6 +175,10 @@ pub fn _print(args: fmt::Arguments) {
     WRITER.lock().write_fmt(args).unwrap();
 }
 
+
+//////////////////////////////
+// TESTS
+//////////////////////////////
 
 #[test_case]
 fn test_println_simple_no_panic() {

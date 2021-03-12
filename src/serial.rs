@@ -5,6 +5,10 @@ use uart_16550::SerialPort;
 use spin::Mutex;
 use lazy_static::lazy_static;
 
+////////////////////////////////
+// Statics/Constants
+////////////////////////////////
+ 
 /*
  * 
  *  |-----------------------|
@@ -26,6 +30,11 @@ lazy_static! {
     };
 }
 
+
+////////////////////////////////
+// Macros
+////////////////////////////////
+ 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
@@ -50,3 +59,8 @@ macro_rules! serial_println {
         concat!($fmt, "\n"), $($arg)*));
 }
 
+
+////////////////////////////////
+// Tests
+////////////////////////////////
+ 
