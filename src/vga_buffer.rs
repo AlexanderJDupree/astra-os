@@ -1,12 +1,16 @@
+// vga_buffer.rs - Memory Mapped IO to the VGA Buffer
+
+
 use core::fmt;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
 
+
 lazy_static! {
     pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
         column_pos: 0,
-        // TODO allow user to choose the VGA coloe code
+        // TODO allow user to choose the VGA color code
         color_code: ColorCode::new(Color::Green, Color::Black),
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
     });
@@ -39,13 +43,15 @@ pub enum Color { // Standard VGA Color Palette
 #[repr(transparent)]
 struct ColorCode(u8);
 
+
 impl ColorCode {
     fn new(foreground: Color, background: Color) -> ColorCode {
         ColorCode((background as u8) << 4 | (foreground as u8))
     }
 }
 
-/// A screen character in the VGA text buffer, consisting of an ASCII character and a `ColorCode`.
+
+// A screen character in the VGA text buffer, consisting of an ASCII character and a `ColorCode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 struct ScreenChar {
@@ -65,6 +71,8 @@ struct Buffer { // Represents VGA Text buffer
 }
 
 
+// Printed when a character code is invalid
+const UNRECOGNIZED_CHAR: u8 = 0xfe;
 
 pub struct Writer {
     column_pos: usize,
@@ -102,7 +110,7 @@ impl Writer {
                 // printable ASCII byte or newline
                 0x20..=0x7e | b'\n' => self.write_byte(byte),
                 // not part of printable ASCII range
-                _ => self.write_byte(0xfe),
+                _ => self.write_byte(UNRECOGNIZED_CHAR),
             }
         }
     }
@@ -157,4 +165,57 @@ macro_rules! println {
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
+}
+
+
+#[test_case]
+fn test_println_simple_no_panic() {
+    println!("test_println_simple_no_panic");
+}
+
+
+#[test_case]
+fn test_println_many_no_panic() {
+    for _ in 0..200 {
+        println!("test_println_many_no_panic");
+    }
+}
+
+
+#[test_case]
+fn test_println_output() {
+    let s = "Lorem ipsum dolor sit amet";
+    println!("{}", s);
+    for (i, c) in s.chars().enumerate() {
+        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
+        assert_eq!(char::from(screen_char.ascii_character), c);
+    }
+}
+
+
+#[test_case]
+fn test_print_line_wrap() {
+    for _ in 0..BUFFER_WIDTH {
+        print!("X");
+    }
+    print!("Y");
+    for i in 0..BUFFER_WIDTH {
+        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
+        assert_eq!(char::from(screen_char.ascii_character), 'X');
+    }
+    let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 1][0].read();
+    assert_eq!(char::from(screen_char.ascii_character), 'Y');
+    println!(""); // Clear the line for the next test
+}
+
+
+#[test_case]
+fn test_non_printable_char() {
+    let s = "💖";
+    println!("{}", s);
+
+    let screen_char1 = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][0].read();
+    let screen_char2 = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][1].read();
+    assert_eq!(screen_char1.ascii_character, UNRECOGNIZED_CHAR);
+    assert_eq!(screen_char2.ascii_character, UNRECOGNIZED_CHAR);
 }
