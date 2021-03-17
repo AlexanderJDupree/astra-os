@@ -2,7 +2,7 @@
 
 
 use crate::gdt;
-use crate::println;
+use crate::{print, println};
 
 use spin;
 use lazy_static::lazy_static;
@@ -16,14 +16,14 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 /**
  *                      ____________                          ____________
- *  Real Time Clock --> |            |   Timer -------------> |            |
- *  ACPI -------------> |            |   Keyboard-----------> |            |      _____
- *  Available --------> | Secondary  |----------------------> | Primary    |     |     |
- *  Available --------> | Interrupt  |   Serial Port 2 -----> | Interrupt  |---> | CPU |
- *  Mouse ------------> | Controller |   Serial Port 1 -----> | Controller |     |_____|
- *  Co-Processor -----> |            |   Parallel Port 2/3 -> |            |
- *  Primary ATA ------> |            |   Floppy disk -------> |            |
- *  Secondary ATA ----> |____________|   Parallel Port 1----> |____________|
+ *  Real Time Clock --> 0            |   Timer -------------> 0            |
+ *  ACPI -------------> 1            |   Keyboard-----------> 1            |      _____
+ *  Available --------> 2 Secondary  |----------------------> 2 Primary    |     |     |
+ *  Available --------> 3 Interrupt  |   Serial Port 2 -----> 3 Interrupt  |---> | CPU |
+ *  Mouse ------------> 4 Controller |   Serial Port 1 -----> 4 Controller |     |_____|
+ *  Co-Processor -----> 5            |   Parallel Port 2/3 -> 5            |
+ *  Primary ATA ------> 6            |   Floppy disk -------> 6            |
+ *  Secondary ATA ----> 7____________|   Parallel Port 1----> 7____________|
  * 
  *  Set offsets for the Programmable Interrupt Controllers. By default, the 8259
  *  PIC uses interrupt vectors that are already mapped to CPU exceptions. We 
@@ -32,6 +32,22 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
  */
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum InterruptIndex {
+    Timer = PIC_1_OFFSET,
+}
+
+impl InterruptIndex {
+    fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    fn as_usize(self) -> usize {
+        usize::from(self.as_u8())
+    }
+}
 
 pub static PICS: spin::Mutex<ChainedPics> = 
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET)});
@@ -46,6 +62,8 @@ lazy_static! {
                 .set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
+
+        idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
 
         idt
     };
@@ -69,6 +87,14 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFra
 
 extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackFrame, error_code: u64) -> ! {
     panic!("EXCEPTION: DOUBLE FAULT - Err {}\n{:#?}", error_code, stack_frame);
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+    print!(".");
+
+    unsafe {
+        PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+    }
 }
 
 

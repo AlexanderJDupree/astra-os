@@ -172,7 +172,12 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts;
+
+    // Avoid deadlock by turning off interrupts temporarily
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    })
 }
 
 
@@ -196,17 +201,24 @@ fn test_println_many_no_panic() {
 
 #[test_case]
 fn test_println_output() {
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
     let s = "Lorem ipsum dolor sit amet";
-    println!("{}", s);
-    for (i, c) in s.chars().enumerate() {
-        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
-        assert_eq!(char::from(screen_char.ascii_character), c);
-    }
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    })
 }
 
 
 #[test_case]
 fn test_print_line_wrap() {
+
     for _ in 0..BUFFER_WIDTH {
         print!("X");
     }
@@ -217,14 +229,13 @@ fn test_print_line_wrap() {
     }
     let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 1][0].read();
     assert_eq!(char::from(screen_char.ascii_character), 'Y');
-    println!(""); // Clear the line for the next test
 }
 
 
 #[test_case]
 fn test_non_printable_char() {
     let s = "💖";
-    println!("{}", s);
+    println!("\n{}", s);
 
     let screen_char1 = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][0].read();
     let screen_char2 = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][1].read();
