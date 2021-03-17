@@ -22,7 +22,7 @@ pub extern "C" fn _start() -> ! {
     test_main();
 
     println!("Phew, I didn't crash. . .");
-    loop {}
+    astra_os::hlt_loop();
 }
 
 
@@ -30,7 +30,7 @@ pub extern "C" fn _start() -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    loop {}
+    astra_os::hlt_loop();
 }
 
 

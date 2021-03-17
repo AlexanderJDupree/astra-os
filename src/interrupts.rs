@@ -15,15 +15,16 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 ////////////////////////////////
 
 /**
- *                      ____________                          ____________
- *  Real Time Clock --> 0            |   Timer -------------> 0            |
- *  ACPI -------------> 1            |   Keyboard-----------> 1            |      _____
- *  Available --------> 2 Secondary  |----------------------> 2 Primary    |     |     |
- *  Available --------> 3 Interrupt  |   Serial Port 2 -----> 3 Interrupt  |---> | CPU |
- *  Mouse ------------> 4 Controller |   Serial Port 1 -----> 4 Controller |     |_____|
- *  Co-Processor -----> 5            |   Parallel Port 2/3 -> 5            |
- *  Primary ATA ------> 6            |   Floppy disk -------> 6            |
- *  Secondary ATA ----> 7____________|   Parallel Port 1----> 7____________|
+ *                      IRQ                                   IRQ
+ *                       ____________                          ____________
+ *  Real Time Clock --> 8            |   Timer -------------> 0            |
+ *  ACPI -------------> 9            |   Keyboard-----------> 1            |      _____
+ *  Available --------> 10 Secondary |----------------------> 2 Primary    |     |     |
+ *  Available --------> 11 Interrupt |   Serial Port 2 -----> 3 Interrupt  |---> | CPU |
+ *  Mouse ------------> 12 Controller|   Serial Port 1 -----> 4 Controller |     |_____|
+ *  Co-Processor -----> 13           |   Parallel Port 2/3 -> 5            |
+ *  Primary ATA ------> 14           |   Floppy disk -------> 6            |
+ *  Secondary ATA ----> 15___________|   Parallel Port 1----> 7____________|
  * 
  *  Set offsets for the Programmable Interrupt Controllers. By default, the 8259
  *  PIC uses interrupt vectors that are already mapped to CPU exceptions. We 
@@ -37,6 +38,7 @@ pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 #[repr(u8)]
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
+    Keyboard,
 }
 
 impl InterruptIndex {
@@ -64,6 +66,7 @@ lazy_static! {
         }
 
         idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
+        idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
 
         idt
     };
@@ -90,13 +93,40 @@ extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackF
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-    print!(".");
 
     unsafe {
         PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
 }
 
+
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1 };
+    use x86_64::instructions::port::Port;
+    use spin::Mutex;
+
+    lazy_static! {
+        static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = 
+            Mutex::new(Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore));
+    }
+    let mut keyboard = KEYBOARD.lock();
+
+    // Read from the PS/2 Controller I/O port, 0x60, and process the scan code
+    let mut port = Port::new(0x60);
+    let scancode: u8 = unsafe { port.read() };
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+        if let Some(key) = keyboard.process_keyevent(key_event) {
+            match key {
+                DecodedKey::Unicode(character) => print!("{}", character),
+                DecodedKey::RawKey(key) => print!("{:?}", key),
+            }
+        }
+    }
+
+    unsafe {
+        PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
+    }
+}
 
 //////////////////////////////
 // Tests
