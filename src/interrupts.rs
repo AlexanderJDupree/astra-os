@@ -1,22 +1,11 @@
 // interrupts.rs - x86 Interrupt Descriptor Table definition and handlers
 
+use crate::{gdt, hlt_loop, print, println};
 
-use crate::{
-    gdt, 
-    hlt_loop, 
-    print, 
-    println
-};
-
-use spin;
 use lazy_static::lazy_static;
-use pic8259_simple::ChainedPics;
-use x86_64::structures::idt::{
-    InterruptDescriptorTable, 
-    InterruptStackFrame, 
-    PageFaultErrorCode
-};
-
+use pic8259::ChainedPics;
+use spin;
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
 ////////////////////////////////
 // Statics/Constants
@@ -33,11 +22,11 @@ use x86_64::structures::idt::{
  *  Co-Processor -----> 13           |   Parallel Port 2/3 -> 5            |
  *  Primary ATA ------> 14           |   Floppy disk -------> 6            |
  *  Secondary ATA ----> 15___________|   Parallel Port 1----> 7____________|
- * 
+ *
  *  Set offsets for the Programmable Interrupt Controllers. By default, the 8259
- *  PIC uses interrupt vectors that are already mapped to CPU exceptions. We 
- *  offset the PIC to use the range 32-47 since these are not in use yet. 
- * 
+ *  PIC uses interrupt vectors that are already mapped to CPU exceptions. We
+ *  offset the PIC to use the range 32-47 since these are not in use yet.
+ *
  */
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
@@ -59,14 +48,14 @@ impl InterruptIndex {
     }
 }
 
-pub static PICS: spin::Mutex<ChainedPics> = 
-    spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET)});
+pub static PICS: spin::Mutex<ChainedPics> =
+    spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
-        
+
         unsafe {
             idt.double_fault
                 .set_handler_fn(double_fault_handler)
@@ -81,7 +70,6 @@ lazy_static! {
     };
 }
 
-
 //////////////////////////////
 // Functions
 //////////////////////////////
@@ -90,19 +78,25 @@ pub fn init_idt() {
     IDT.load();
 }
 
-
 // {:#?} - Pretty print debug info
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
-
-extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackFrame, error_code: u64) -> ! {
-    panic!("EXCEPTION: DOUBLE FAULT - Err {}\n{:#?}", error_code, stack_frame);
+extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) -> ! {
+    panic!(
+        "EXCEPTION: DOUBLE FAULT - Err {}\n{:#?}",
+        error_code, stack_frame
+    );
 }
 
-
-extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrame, error_code: PageFaultErrorCode) {
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: PageFaultErrorCode,
+) {
     use x86_64::registers::control::Cr2; // CR2 has the virtual address that caused the page fault
 
     println!("EXCEPTION: PAGE FAULT");
@@ -112,23 +106,22 @@ extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFra
     hlt_loop();
 }
 
-
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     unsafe {
-        PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+        PICS.lock()
+            .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
 }
 
-
-extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1 };
-    use x86_64::instructions::port::Port;
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
     use spin::Mutex;
+    use x86_64::instructions::port::Port;
 
     lazy_static! {
-        static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = 
-            Mutex::new(Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore));
+        static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(
+            Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore)
+        );
     }
     let mut keyboard = KEYBOARD.lock();
 
@@ -145,7 +138,8 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
     }
 
     unsafe {
-        PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
+        PICS.lock()
+            .notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
     }
 }
 

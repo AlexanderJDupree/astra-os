@@ -1,11 +1,9 @@
 // gdt.rs - Global Descriptor Table
 
-
-use x86_64::VirtAddr;
-use x86_64::structures::tss::TaskStateSegment;
-use x86_64::structures::gdt::{GlobalDescriptorTable, Descriptor, SegmentSelector};
 use lazy_static::lazy_static;
-
+use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
+use x86_64::structures::tss::TaskStateSegment;
+use x86_64::VirtAddr;
 
 //////////////////////////////
 // Statics/Constants
@@ -13,12 +11,11 @@ use lazy_static::lazy_static;
 
 // Double Fault exception requires its own stack. If we have a stack overflow
 // That causes a page fault, the CPU will try to push the interrupt stack frame
-// onto the stack that has already overflowed, causing a second page fault which 
-// triggers the double fault. The CPU will then try to push the exception stack 
-// frame again onto the bad stack before calling the double fault handler, 
-// which will cause a triple fault and system reset. 
+// onto the stack that has already overflowed, causing a second page fault which
+// triggers the double fault. The CPU will then try to push the exception stack
+// frame again onto the bad stack before calling the double fault handler,
+// which will cause a triple fault and system reset.
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-
 
 lazy_static! {
     static ref TSS: TaskStateSegment = {
@@ -40,31 +37,34 @@ lazy_static! {
     };
 }
 
-
 lazy_static! {
     static ref GDT: (GlobalDescriptorTable, Selectors) = {
-        let mut gdt       = GlobalDescriptorTable::new();
+        let mut gdt = GlobalDescriptorTable::new();
         let code_selector = gdt.add_entry(Descriptor::kernel_code_segment());
-        let tss_selector  = gdt.add_entry(Descriptor::tss_segment(&TSS));
-        (gdt, Selectors { code_selector, tss_selector })
+        let tss_selector = gdt.add_entry(Descriptor::tss_segment(&TSS));
+        (
+            gdt,
+            Selectors {
+                code_selector,
+                tss_selector,
+            },
+        )
     };
 }
-
 
 ////////////////////////////////
 // Structs, Types, Traits, Impl
 ////////////////////////////////
- 
+
 struct Selectors {
     code_selector: SegmentSelector,
     tss_selector: SegmentSelector,
 }
 
-
 //////////////////////////////
 // API
 //////////////////////////////
- 
+
 pub fn init() {
     use x86_64::instructions::segmentation::set_cs;
     use x86_64::instructions::tables::load_tss;
@@ -77,4 +77,3 @@ pub fn init() {
         load_tss(GDT.1.tss_selector);
     }
 }
- 
